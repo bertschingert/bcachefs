@@ -220,6 +220,12 @@ void *rust_helper_alloc_inode_sb(struct super_block *sb,
 }
 EXPORT_SYMBOL_GPL(rust_helper_alloc_inode_sb);
 
+loff_t rust_helper_i_size_read(const struct inode *inode)
+{
+	return i_size_read(inode);
+}
+EXPORT_SYMBOL_GPL(rust_helper_i_size_read);
+
 /*
  * `bindgen` binds the C `size_t` type the Rust `usize` type, so we can
  * use it in contexts where Rust expects a `usize` like slice (array) indices.
