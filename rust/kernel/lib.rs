@@ -48,6 +48,7 @@ pub mod iov_iter;
 #[cfg(CONFIG_KUNIT)]
 pub mod kunit;
 pub mod mm;
+pub mod mount;
 pub mod pages;
 pub mod prelude;
 pub mod print;
