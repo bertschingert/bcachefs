@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
-
 //! File systems.
 //!
 //! C headers: [`include/linux/fs.h`](../../../../include/linux/fs.h)
@@ -408,6 +406,103 @@ impl<T: Type + ?Sized> Tables<T> {
     }
 }
 
+/// Corresponds to the kernel's `struct inode_operations`.
+///
+/// You implement this trait whenever you would create a `struct inode_operations`.
+#[vtable]
+pub trait InodeOperations<T: Type + ?Sized> {
+    /// called when the VFS needs to look up an inode in a parent directory
+    fn lookup(
+        sb: &SuperBlock<T>,
+        fs_info: <T::Data as ForeignOwnable>::Borrowed<'_>,
+        parent: &T::INodeData,
+        name: &[u8],
+        flags: u32,
+    ) -> Result<ARef<INode<T>>>;
+}
+
+pub(crate) struct InodeOperationsVtable<I, T: ?Sized>(PhantomData<I>, PhantomData<T>);
+impl<I: InodeOperations<T>, T: Type + ?Sized> InodeOperationsVtable<I, T> {
+    const VTABLE: bindings::inode_operations = bindings::inode_operations {
+        lookup: if I::HAS_LOOKUP {
+            Some(Self::lookup_callback)
+        } else {
+            None
+        },
+        get_link: None,
+        permission: None,
+        get_inode_acl: None,
+        readlink: None,
+        create: None,
+        link: None,
+        unlink: None,
+        symlink: None,
+        mkdir: None,
+        rmdir: None,
+        mknod: None,
+        rename: None,
+        setattr: None,
+        getattr: None,
+        listxattr: None,
+        fiemap: None,
+        update_time: None,
+        atomic_open: None,
+        tmpfile: None,
+        get_acl: None,
+        set_acl: None,
+        fileattr_set: None,
+        fileattr_get: None,
+    };
+
+    unsafe extern "C" fn lookup_callback(
+        dir: *mut bindings::inode,
+        dentry: *mut bindings::dentry,
+        flags: core::ffi::c_uint,
+    ) -> *mut bindings::dentry {
+        let new_inode: *mut bindings::inode;
+        // SAFETY: into_foreign was called in fs::NewSuperBlock<..., NeedsInit>::init and
+        // it is valid until from_foreign will be called in fs::Tables::free_callback
+        let fs_info = unsafe { T::Data::borrow((*(*dir).i_sb).s_fs_info) };
+
+        let ptr = container_of!(dir, INodeWithData<T::INodeData>, inode);
+        // SAFETY: the inode is allocated as part of the greater INodeWithData structure, so it is
+        // safe to dereference the outer object
+        let outer = unsafe { &*ptr };
+        let inode_data = outer.data.as_ptr();
+
+        // SAFETY: The callback is called with a valid dentry and the name to look for is found in
+        // the dentry, see Documentation/filesystems/vfs.rst
+        let name = unsafe { (*dentry).d_name.name };
+        // SAFETY: This callback is called with a valid dentry
+        let len = unsafe { (*dentry).d_name.__bindgen_anon_1.__bindgen_anon_1.len };
+        // SAFETY: This is a slice of u8 elements, inferred from the parameters of the I::lookup
+        // function call below; data is valid for reads of len * mem::size_of::<T> bytes since the
+        // elements in this case are bytes (i.e. the number of elements equals the number of bytes)
+        // the memory range also doesn't span mutiple allocated objects and it is properly aligned
+        // (u8 doesn't have any alignment requirements). The vfs documentation also implies that
+        // the name is non-null.
+        let slice = unsafe { core::slice::from_raw_parts(name, len.try_into().unwrap()) };
+
+        // SAFETY: this callback is called with a valid pointer to inode and the i_sb pointer is
+        // initialized when the inode is allocated
+        let sb = unsafe { SuperBlock::from_ptr((*dir).i_sb) };
+
+        // SAFETY: inode_data is valid because data is always allocated together with the inode
+        new_inode = if let Ok(inode) = I::lookup(sb, fs_info, unsafe { &*inode_data }, slice, flags)
+        {
+            // Make sure the destructor of the inode is not called because d_splice_alias takes
+            // over the reference to the inode
+            ManuallyDrop::new(inode).0.get()
+        } else {
+            ptr::null_mut()
+        };
+        // SAFETY: new_inode is either a valid reference with a refcount of 1 because we avoided
+        // the call to its destructor, either a null pointer; this callback was called with a valid
+        // dentry
+        unsafe { bindings::d_splice_alias(new_inode, dentry) }
+    }
+}
+
 /// A file system type.
 pub trait Type {
     /// The context used to build fs configuration before it is mounted or reconfigured.
@@ -782,7 +877,7 @@ impl SuperParams {
 /// The superblock is a newly-created one and this is the only active pointer to it.
 pub struct NewSuperBlock<'a, T: Type + ?Sized, S = NeedsInit> {
     /// Pointer to the superblock; this fields is public so puzzlefs can call
-    /// try_new_dcache_dir_inode when populating the directory hierarchy
+    /// try_new_dir_inode when populating the directory hierarchy
     pub sb: &'a mut SuperBlock<T>,
 
     // This also forces `'a` to be invariant.
@@ -1075,6 +1170,18 @@ impl<T: Type + ?Sized> file::OpenAdapter<T::INodeData> for FsAdapter<T> {
 pub struct SuperBlock<T: Type + ?Sized>(pub(crate) Opaque<bindings::super_block>, PhantomData<T>);
 
 impl<T: Type + ?Sized> SuperBlock<T> {
+    /// Creates a reference to a [`SuperBlock`] from a valid pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `ptr` is valid and remains valid for the lifetime of the
+    /// returned [`SuperBlock`] instance.
+    pub(crate) unsafe fn from_ptr<'a>(ptr: *const bindings::super_block) -> &'a SuperBlock<T> {
+        // SAFETY: The safety requirements guarantee the validity of the dereference, while the
+        // `SuperBlock` type being transparent makes the cast ok.
+        unsafe { &*ptr.cast() }
+    }
+
     fn try_new_inode(
         &self,
         mode_type: u16,
@@ -1113,6 +1220,26 @@ impl<T: Type + ?Sized> SuperBlock<T> {
         // SAFETY: `inode` only has one reference, and it's being relinquished to the `ARef`
         // instance.
         Ok(unsafe { ARef::from_raw(inode.cast()) })
+    }
+
+    /// Creates a new inode that is a directory.
+    pub fn try_new_dir_inode<
+        U: InodeOperations<T>,
+        F: file::Operations<OpenData = T::INodeData>,
+    >(
+        &self,
+        params: INodeParams<T::INodeData>,
+    ) -> Result<ARef<INode<T>>> {
+        self.try_new_inode(bindings::S_IFDIR as _, params, |inode| {
+            inode.__bindgen_anon_3.i_fop =
+                unsafe { file::OperationsVtable::<FsAdapter<T>, F>::build() };
+
+            inode.i_op = &InodeOperationsVtable::<U, T>::VTABLE;
+
+            // Directory inodes start off with i_nlink == 2 (for "." entry).
+            // SAFETY: `inode` is valid for write.
+            unsafe { bindings::inc_nlink(inode) };
+        })
     }
 
     /// Creates a new inode that is a directory.

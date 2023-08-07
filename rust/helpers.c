@@ -226,6 +226,14 @@ loff_t rust_helper_i_size_read(const struct inode *inode)
 }
 EXPORT_SYMBOL_GPL(rust_helper_i_size_read);
 
+bool rust_helper_dir_emit(struct dir_context *ctx,
+		const char *name, int namelen,
+		u64 ino, unsigned type)
+{
+	return dir_emit(ctx, name, namelen, ino, type);
+}
+EXPORT_SYMBOL_GPL(rust_helper_dir_emit);
+
 /*
  * `bindgen` binds the C `size_t` type the Rust `usize` type, so we can
  * use it in contexts where Rust expects a `usize` like slice (array) indices.

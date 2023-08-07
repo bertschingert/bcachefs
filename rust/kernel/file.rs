@@ -110,6 +110,30 @@ pub mod flags {
     pub const O_RDWR: u32 = bindings::O_RDWR;
 }
 
+/// Flags for the directory entry type
+pub mod dt_type {
+    /// Unknown
+    pub const DT_UNKNOWN: u32 = bindings::DT_UNKNOWN;
+    /// Named pipe (fifo)
+    pub const DT_FIFO: u32 = bindings::DT_FIFO;
+    /// Character device
+    pub const DT_CHR: u32 = bindings::DT_CHR;
+    /// Directory
+    pub const DT_DIR: u32 = bindings::DT_DIR;
+    /// Block device
+    pub const DT_BLK: u32 = bindings::DT_BLK;
+    /// Regular file
+    pub const DT_REG: u32 = bindings::DT_REG;
+    /// Symlink
+    pub const DT_LNK: u32 = bindings::DT_LNK;
+    /// Socket
+    pub const DT_SOCK: u32 = bindings::DT_SOCK;
+    /// Whiteout
+    pub const DT_WHT: u32 = bindings::DT_WHT;
+    /// The maximum number of directory entry types
+    pub const DT_MAX: u32 = bindings::DT_MAX;
+}
+
 /// Wraps the kernel's `struct file`.
 ///
 /// # Invariants
@@ -201,6 +225,54 @@ unsafe impl AlwaysRefCounted for File {
     unsafe fn dec_ref(obj: ptr::NonNull<Self>) {
         // SAFETY: The safety requirements guarantee that the refcount is nonzero.
         unsafe { bindings::fput(obj.cast().as_ptr()) }
+    }
+}
+
+/// Wraps the kernel's `struct dir_context`.
+#[repr(transparent)]
+pub struct DirContext(pub(crate) Opaque<bindings::dir_context>);
+impl DirContext {
+    /// Creates a reference to a [`DirContext`] from a valid pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `ptr` is valid and remains valid for the lifetime of the
+    /// returned [`DirContext`] instance.
+    pub(crate) unsafe fn from_ptr<'a>(ptr: *mut bindings::dir_context) -> &'a mut DirContext {
+        // SAFETY: The safety requirements guarantee the validity of the dereference, while the
+        // `DirContext` type being transparent makes the cast ok.
+        unsafe { &mut *ptr.cast() }
+    }
+
+    /// Emit a directory called `name` with inode `ino` of type `dir_type`
+    pub fn dir_emit(&self, name: &[u8], ino: u64, dir_type: u32) -> Result {
+        unsafe {
+            // SAFETY: The DirContext is valid by design, it shouldn't be possible to create a
+            // reference that doesn't live long enough; name is a reference, so it's valid to use
+            // it as a raw pointer
+            bindings::dir_emit(
+                self.0.get(),
+                name.as_ptr().cast(),
+                name.len().try_into()?,
+                ino,
+                dir_type,
+            )
+        };
+        Ok(())
+    }
+
+    /// Advance the position of DirContext by `pos`
+    pub fn advance_pos(&mut self, pos: i64) {
+        // SAFETY: The DirContext is valid by design, it shouldn't be possible to create a
+        // reference that doesn't live long enough
+        unsafe { (*self.0.get()).pos += pos };
+    }
+
+    /// Get the position of the DirContext
+    pub fn get_pos(&self) -> i64 {
+        // SAFETY: The DirContext is valid by design, it shouldn't be possible to create a
+        // reference that doesn't live long enough
+        unsafe { (*self.0.get()).pos }
     }
 }
 
@@ -688,6 +760,25 @@ impl<A: OpenAdapter<T::OpenData>, T: Operations> OperationsVtable<A, T> {
         })
     }
 
+    unsafe extern "C" fn iterate_shared_callback(
+        file: *mut bindings::file,
+        context: *mut bindings::dir_context,
+    ) -> core::ffi::c_int {
+        from_result(|| {
+            // SAFETY: `private_data` was initialised by `open_callback` with a value returned by
+            // `T::Data::into_foreign`. `T::Data::from_foreign` is only called by the
+            // `release` callback, which the C API guarantees that will be called only when all
+            // references to `file` have been released, so we know it can't be called while this
+            // function is running.
+            let f = unsafe { T::Data::borrow((*file).private_data) };
+            // SAFETY: this callback is called with valid file and context pointers
+            let res = T::iterate_shared(f, unsafe { File::from_ptr(file) }, unsafe {
+                DirContext::from_ptr(context)
+            })?;
+            Ok(res.try_into().unwrap())
+        })
+    }
+
     unsafe extern "C" fn poll_callback(
         file: *mut bindings::file,
         wait: *mut bindings::poll_table_struct,
@@ -1044,6 +1135,17 @@ pub trait Operations {
     ) -> Result<u32> {
         Ok(bindings::POLLIN | bindings::POLLOUT | bindings::POLLRDNORM | bindings::POLLWRNORM)
     }
+
+    /// Iterates through the entries in a directory (lists the directory contents)
+    ///
+    /// Corresponds to the `iterate_shared` function pointer in `struct file_operations`
+    fn iterate_shared(
+        _data: <Self::Data as ForeignOwnable>::Borrowed<'_>,
+        _file: &File,
+        _context: &mut DirContext,
+    ) -> Result<u32> {
+        Err(EINVAL)
+    }
 }
 
 /// Writes the contents of a slice into a buffer writer.
@@ -1059,4 +1161,29 @@ pub fn read_from_slice(s: &[u8], writer: &mut impl IoBufferWriter, offset: u64) 
     let len = core::cmp::min(s.len() - offset, writer.len());
     writer.write_slice(&s[offset..][..len])?;
     Ok(len)
+}
+
+/// Safe wrapper over `generic_file_llseek`
+pub fn generic_file_llseek(file: &File, offset: SeekFrom) -> Result<u64> {
+    let (whence, off) = match offset {
+        SeekFrom::Start(offset) => (bindings::SEEK_SET, offset.try_into()?),
+        SeekFrom::Current(offset) => (bindings::SEEK_CUR, offset),
+        SeekFrom::End(offset) => (bindings::SEEK_END, offset),
+    };
+
+    // SAFETY: file is a reference, so it's safe to convert it to a raw pointer
+    let result = unsafe { bindings::generic_file_llseek(file.0.get(), off, whence.try_into()?) };
+    if result < 0 {
+        return Err(Error::from_errno(result.try_into()?));
+    }
+    Ok(result.try_into()?)
+}
+
+/// Safe wrapper which emulates `generic_read_dir`
+pub fn generic_read_dir(
+    _file: &File,
+    _writer: &mut impl IoBufferWriter,
+    _offset: u64,
+) -> Result<usize> {
+    return Err(EISDIR);
 }
