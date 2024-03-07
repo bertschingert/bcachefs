@@ -5,11 +5,12 @@
 #![allow(missing_docs)]
 
 use kernel::prelude::*;
-use kernel::debugfs;
+// use kernel::debugfs;
 
 pub mod bindings;
 
 pub mod tb_debugfs;
+pub mod debugfs;
 
 module! {
     type: RustPlayground,
@@ -30,7 +31,9 @@ impl kernel::Module for RustPlayground {
         unsafe { bindings::tb_register_debugfs_files() };
 
         let debug_dir = debugfs::debugfs_create_dir().unwrap();
-        let debug_file = debugfs::debugfs_create_file(&debug_dir).unwrap();
+        // let debug_file = debugfs::debugfs_create_file(&debug_dir).unwrap();
+        let _debug_display = debugfs::DebugfsDisplayItem::new(&debug_dir,
+                                                              &"hello display!");
 
         Ok(RustPlayground {
             debug_dir: debug_dir,

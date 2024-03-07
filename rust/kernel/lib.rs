@@ -52,7 +52,7 @@ pub mod task;
 pub mod types;
 pub mod uaccess;
 pub mod workqueue;
-pub mod debugfs;
+// pub mod debugfs;
 
 #[doc(hidden)]
 pub use bindings;
