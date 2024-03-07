@@ -11,6 +11,7 @@ pub mod bindings;
 
 pub mod tb_debugfs;
 pub mod debugfs;
+pub mod debugfs_iter;
 
 module! {
     type: RustPlayground,

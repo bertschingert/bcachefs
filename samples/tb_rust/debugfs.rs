@@ -10,7 +10,7 @@ use kernel::prelude::*;
 use super::bindings;
 
 pub struct DebugfsDentry {
-    raw: *mut bindings::dentry,
+    pub raw: *mut bindings::dentry,
 }
 
 unsafe impl Sync for DebugfsDentry {}
@@ -38,12 +38,14 @@ impl DebugfsDentry {
     }
 }
 
-pub struct DebugfsDisplayItem<'a> {
+pub struct DebugfsDisplayItem<T: core::fmt::Display> {
     raw: *mut bindings::dentry,
-    item: *mut &'a dyn core::fmt::Display,
+    _type: core::marker::PhantomData<T>,
 }
 
-impl<'a> DebugfsDisplayItem<'a> {
+impl<'a, T> DebugfsDisplayItem<T>
+where T: core::fmt::Display
+{
     const DISPLAY_FILE_OPS: bindings::file_operations = bindings::file_operations {
         owner: core::ptr::null_mut(),
         llseek: None,
@@ -86,7 +88,7 @@ impl<'a> DebugfsDisplayItem<'a> {
         let inode = unsafe { &*inode };
         let file = unsafe { &mut *file };
 
-        let item = inode.i_private as *mut &dyn core::fmt::Display;
+        let item = inode.i_private as *mut &T;
 
         let state = match Box::try_new(DebugfsState {
             buf: None,
@@ -101,15 +103,9 @@ impl<'a> DebugfsDisplayItem<'a> {
         0
     }
 
-    extern "C" fn debugfs_release(inode: *mut bindings::inode,
-                                  file: *mut bindings::file) -> core::ffi::c_int
+    extern "C" fn debugfs_release(_inode: *mut bindings::inode,
+                                  _file: *mut bindings::file) -> core::ffi::c_int
     {
-        /*
-        let file = unsafe { &*file };
-        let state = file.private_data;
-        let state = unsafe { Box::from_raw(state as *mut DebugfsState<'_>) };
-        */
-
         0
     }
 
@@ -121,7 +117,7 @@ impl<'a> DebugfsDisplayItem<'a> {
         pr_info!("debugfs_read\n");
         let file = unsafe { &*file };
         let state = file.private_data;
-        let mut state = unsafe { Box::from_raw(state as *mut DebugfsState<'_>) };
+        let mut state = unsafe { Box::from_raw(state as *mut DebugfsState<'_, T>) };
         pr_info!("debugfs_read: item: {:?}", state.item);
 
         if state.buf.is_some() && state.buf.as_ref().unwrap().len() == 0 {
@@ -158,7 +154,7 @@ impl<'a> DebugfsDisplayItem<'a> {
     }
 
     pub fn new(parent: &DebugfsDentry,
-               item: &'a dyn core::fmt::Display) -> Self
+               item: &'a T) -> Self
     {
         let item = Box::try_new(item).unwrap();
         let item = Box::into_raw(item);
@@ -176,25 +172,30 @@ impl<'a> DebugfsDisplayItem<'a> {
 
         DebugfsDisplayItem {
             raw: debugfs_file,
-            item,
+            _type: Default::default(),
         }
     }
 }
 
-struct DebugfsState<'a> {
+struct DebugfsState<'a, T>
+where T: core::fmt::Display
+{
     buf: Option<Box<kernel::str::CString>>,
-    item: *mut &'a dyn core::fmt::Display,
+    item: *mut &'a T,
 }
 
-impl core::fmt::Display for DebugfsState<'_> {
+impl<T> core::fmt::Display for DebugfsState<'_, T>
+where T: core::fmt::Display
+{
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "buf: {:?}", self.buf)
     }
 }
 
-impl DebugfsState<'_> {
+impl<T> DebugfsState<'_, T>
+where T: core::fmt::Display
+{
     fn flush_buf(&mut self, len: usize, writer: &mut uaccess::UserSliceWriter) -> isize {
-        let mut new_buf: Option<Box<CString>> = None;
         if let Some(buf) = &self.buf {
             let n = core::cmp::min(len, buf.len());
 
@@ -209,7 +210,7 @@ impl DebugfsState<'_> {
                     Err(_) => return -14,
                 };
 
-                new_buf = match Box::try_new(remainder) {
+                let new_buf = match Box::try_new(remainder) {
                     Ok(b) => Some(b),
                     Err(_) => return -14,
                 };
