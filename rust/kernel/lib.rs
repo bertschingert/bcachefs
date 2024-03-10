@@ -32,6 +32,7 @@ extern crate self as kernel;
 #[cfg(not(testlib))]
 mod allocator;
 mod build_assert;
+pub mod debugfs;
 pub mod error;
 pub mod init;
 pub mod ioctl;
@@ -41,6 +42,7 @@ pub mod kunit;
 pub mod net;
 pub mod prelude;
 pub mod print;
+pub mod reader;
 mod static_assert;
 #[doc(hidden)]
 pub mod std_vendor;
