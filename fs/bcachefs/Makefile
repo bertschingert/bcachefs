@@ -94,3 +94,14 @@ obj-$(CONFIG_MEAN_AND_VARIANCE_UNIT_TEST)   += mean_and_variance_test.o
 
 # Silence "note: xyz changed in GCC X.X" messages
 subdir-ccflags-y += $(call cc-disable-warning, psabi)
+
+always-$(CONFIG_BCACHEFS_RUST)		+= bindings/bindings_generated.rs
+
+$(obj)/bcachefs_module.o: $(src)/bindings/bindings_generated.rs
+
+$(obj)/bindings/bindings_generated.rs: private bindgen_target_flags = \
+    $(shell grep -Ev '^#|^$$' $(srctree)/$(src)/bindgen_parameters)
+
+$(obj)/bindings/bindings_generated.rs: $(src)/bindings/bindings_helper.h  \
+	$(src)/bindgen_parameters FORCE
+	$(call if_changed_dep,bindgen)
