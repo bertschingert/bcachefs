@@ -1552,7 +1552,11 @@ struct btree_node {
 
 	};
 	};
-} __packed __aligned(8);
+}
+#ifndef CONFIG_BCACHEFS_RUST
+__packed
+#endif
+__aligned(8);
 
 LE64_BITMASK(BTREE_NODE_ID_LO,	struct btree_node, flags,  0,  4);
 LE64_BITMASK(BTREE_NODE_LEVEL,	struct btree_node, flags,  4,  8);
