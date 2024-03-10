@@ -2724,7 +2724,7 @@ void bch2_trans_iter_exit(struct btree_trans *trans, struct btree_iter *iter)
 void bch2_trans_iter_init_outlined(struct btree_trans *trans,
 			  struct btree_iter *iter,
 			  enum btree_id btree_id, struct bpos pos,
-			  unsigned flags)
+			  unsigned short flags)
 {
 	bch2_trans_iter_init_common(trans, iter, btree_id, pos, 0, 0,
 			       bch2_btree_iter_flags(trans, btree_id, flags),

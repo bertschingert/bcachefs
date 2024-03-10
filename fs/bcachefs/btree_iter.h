@@ -473,7 +473,7 @@ static inline void bch2_trans_iter_init_common(struct btree_trans *trans,
 }
 
 void bch2_trans_iter_init_outlined(struct btree_trans *, struct btree_iter *,
-			  enum btree_id, struct bpos, unsigned);
+			  enum btree_id, struct bpos, unsigned short flags);
 
 static inline void bch2_trans_iter_init(struct btree_trans *trans,
 			  struct btree_iter *iter,

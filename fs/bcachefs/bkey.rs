@@ -5,6 +5,7 @@
 use crate::bindings;
 use crate::btree::BtreeIter;
 use crate::fs::Fs;
+use crate::printbuf::Printbuf;
 use core::ffi::CStr;
 use core::fmt;
 use core::marker::PhantomData;
@@ -27,6 +28,12 @@ impl<'a, 'b> BkeySC<'a> {
     pub fn to_text(&'a self, fs: &'b Fs) -> BkeySCToText<'a, 'b> {
         BkeySCToText { k: self, fs }
     }
+
+    pub fn write_to_printbuf(&'a self, fs: &Fs, p: &mut Printbuf) {
+        unsafe {
+            bindings::bch2_bkey_val_to_text(p.raw_mut(), fs.raw(), self.to_raw());
+        }
+    }
 }
 
 pub struct BkeySCToText<'a, 'b> {
@@ -38,7 +45,7 @@ impl<'a, 'b> fmt::Display for BkeySCToText<'a, 'b> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unsafe {
             printbuf_to_formatter(f, |buf| {
-                bindings::bch2_bkey_val_to_text(buf, self.fs.raw, self.k.to_raw())
+                bindings::bch2_bkey_val_to_text(buf, self.fs.raw(), self.k.to_raw())
             })
         }
     }
