@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0
+
+config SAMPLE_RUST_TB
+	tristate "Rust Playground"
+	depends on RUST
+	help
+	  This option builds my Rust playground module sample.
+
+	  To compile this as a module, choose M here:
+	  the module will be called rust_playground.

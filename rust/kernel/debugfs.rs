@@ -14,9 +14,12 @@ use super::reader::*;
 pub type Mode = core::ffi::c_ushort;
 
 /// Type representing a dentry in debugfs
+#[derive(Copy, Clone)]
 pub struct Dentry {
     raw: *mut bindings::dentry,
 }
+
+unsafe impl Sync for Dentry {}
 
 /// Create a debugfs directory
 ///

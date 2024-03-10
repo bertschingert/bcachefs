@@ -292,6 +292,7 @@ config SAMPLE_CGROUP
 	  Build samples that demonstrate the usage of the cgroup API.
 
 source "samples/rust/Kconfig"
+source "samples/tb_rust/Kconfig"
 
 endif # SAMPLES
 
