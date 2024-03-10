@@ -95,6 +95,7 @@ obj-$(CONFIG_MEAN_AND_VARIANCE_UNIT_TEST)   += mean_and_variance_test.o
 # Silence "note: xyz changed in GCC X.X" messages
 subdir-ccflags-y += $(call cc-disable-warning, psabi)
 
+bcachefs-$(CONFIG_BCACHEFS_RUST)	+= bcachefs_module.o
 always-$(CONFIG_BCACHEFS_RUST)		+= bindings/bindings_generated.rs
 
 $(obj)/bcachefs_module.o: $(src)/bindings/bindings_generated.rs

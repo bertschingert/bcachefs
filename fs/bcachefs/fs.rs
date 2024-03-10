@@ -6,5 +6,21 @@ use crate::bindings;
 
 #[derive(Clone)]
 pub struct Fs {
-    pub raw: *mut bindings::bch_fs,
+    raw: *mut bindings::bch_fs,
+}
+
+impl Fs {
+    /// # SAFETY
+    ///
+    /// This holds a raw pointer to a struct bch_fs representing a mounted bcachefs filesystem, but
+    /// this reference is not accounted on the C side in any way. The caller who creates this Fs
+    /// object must ensure that the filesystem's lifetime is greater than the lifetime of this Fs
+    /// object.
+    pub unsafe fn new(raw: *mut bindings::bch_fs) -> Fs {
+        Fs { raw }
+    }
+
+    pub fn raw(&self) -> *mut bindings::bch_fs {
+        self.raw
+    }
 }
