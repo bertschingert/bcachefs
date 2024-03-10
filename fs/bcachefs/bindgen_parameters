@@ -1,5 +1,20 @@
 # SPDX-License-Identifier: GPL-2.0
 
---allowlist-function ''
---allowlist-type ''
---allowlist-var ''
+--default-enum-style rust
+
+--allowlist-function bch2_.*
+--allowlist-function __bch2_.*
+
+--allowlist-type btree_trans
+--allowlist-type bch_errcode
+
+--blocklist-type bkey
+--blocklist-type bch_extent_ptr
+--opaque-type bch_extent_entry
+
+--opaque-type task_struct
+--opaque-type bch_fs
+--opaque-type journal
+--opaque-type six_lock
+
+--allowlist-var BTREE_ITER.*
