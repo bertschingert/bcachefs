@@ -7,13 +7,13 @@
 
 --allowlist-type btree_trans
 --allowlist-type bch_errcode
+--allowlist-type bch_fs
 
 --blocklist-type bkey
 --blocklist-type bch_extent_ptr
 --opaque-type bch_extent_entry
 
 --opaque-type task_struct
---opaque-type bch_fs
 --opaque-type journal
 --opaque-type six_lock
 

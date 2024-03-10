@@ -70,7 +70,7 @@ impl<'f> BtreeTrans<'f> {
     pub fn new(fs: &'f Fs) -> BtreeTrans<'_> {
         unsafe {
             BtreeTrans {
-                raw: &mut *bindings::__bch2_trans_get(fs.raw, 0),
+                raw: &mut *bindings::__bch2_trans_get(fs.raw(), 0),
                 fs: PhantomData,
             }
         }

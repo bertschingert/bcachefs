@@ -1074,6 +1074,30 @@ struct bch_fs {
 	struct dentry		*fs_debug_dir;
 	struct dentry		*btree_debug_dir;
 	struct btree_debug	btree_debug[BTREE_ID_NR];
+#ifdef CONFIG_BCACHEFS_RUST
+	/*
+	 * It would be nice to have the Rust debugfs implementation use the
+	 * ->btree_debug array embedded in this struct as the private data
+	 * that it uses to get a reference to struct bch_fs in open(). However,
+	 * I struggled to get that to work because Rust wants to call a method
+	 * on the private data (object.clone().into_bufreader()) in
+	 * DebugfsReader::open()) and Rust expects to take ownership of that
+	 * type, hence the clone(). This however breaks if I use an entry in
+	 * ->btree_debug here because its address changes and so it can no
+	 *  longer be used to get the struct bch_fs reference. :(
+	 *
+	 * Therefore, this separate array is created which stores pointers into
+	 * the btree_debug array. It can be clone()ed without affecting the
+	 * ability to get a reference to bch_fs.
+	 *
+	 * It might be possible to work around this using tricks like
+	 * mem::transmute() to convert a raw pointer into an owned reference,
+	 * but that seems undesirable in general. I am open to suggestions here
+	 * on how to handle this better. Storing the array in a separate heap
+	 * allocation like this is awkward.
+	 */
+	void			*btree_debug_array;
+#endif
 	struct btree		*verify_data;
 	struct btree_node	*verify_ondisk;
 	struct mutex		verify_lock;

@@ -21,6 +21,8 @@
 #include "inode.h"
 #include "super.h"
 
+#include "bcachefs_rust.h"
+
 #include <linux/console.h>
 #include <linux/debugfs.h>
 #include <linux/module.h>
@@ -864,6 +866,10 @@ void bch2_fs_debug_exit(struct bch_fs *c)
 {
 	if (!IS_ERR_OR_NULL(c->fs_debug_dir))
 		debugfs_remove_recursive(c->fs_debug_dir);
+
+#ifdef CONFIG_BCACHEFS_RUST
+	bch_debugfs_cleanup(c->btree_debug_array);
+#endif
 }
 
 void bch2_fs_debug_init(struct bch_fs *c)
@@ -902,9 +908,16 @@ void bch2_fs_debug_init(struct bch_fs *c)
 	     bd < c->btree_debug + ARRAY_SIZE(c->btree_debug);
 	     bd++) {
 		bd->id = bd - c->btree_debug;
+#ifndef CONFIG_BCACHEFS_RUST
 		debugfs_create_file(bch2_btree_id_str(bd->id),
 				    0400, c->btree_debug_dir, bd,
 				    &btree_debug_ops);
+#else
+		bch_debugfs_setup_btree(c->btree_debug_dir,
+					&c->btree_debug_array,
+					bch2_btree_id_str(bd->id),
+					bd);
+#endif
 
 		snprintf(name, sizeof(name), "%s-formats",
 			 bch2_btree_id_str(bd->id));
