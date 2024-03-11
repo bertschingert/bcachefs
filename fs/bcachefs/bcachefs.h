@@ -634,7 +634,7 @@ enum bch_fs_flags {
 };
 
 struct btree_debug {
-	unsigned		id;
+	enum btree_id		id;
 };
 
 #define BCH_TRANSACTIONS_NR 128
