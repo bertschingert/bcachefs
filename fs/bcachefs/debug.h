@@ -21,6 +21,7 @@ static inline void bch2_btree_verify(struct bch_fs *c, struct btree *b)
 #ifdef CONFIG_DEBUG_FS
 void bch2_fs_debug_exit(struct bch_fs *);
 void bch2_fs_debug_init(struct bch_fs *);
+void tb_debug_init(struct bch_fs *, struct dentry *);
 #else
 static inline void bch2_fs_debug_exit(struct bch_fs *c) {}
 static inline void bch2_fs_debug_init(struct bch_fs *c) {}

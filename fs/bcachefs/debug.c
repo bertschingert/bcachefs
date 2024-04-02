@@ -898,6 +898,8 @@ void bch2_fs_debug_init(struct bch_fs *c)
 	if (IS_ERR_OR_NULL(c->btree_debug_dir))
 		return;
 
+	tb_debug_init(c, c->fs_debug_dir);
+
 	for (bd = c->btree_debug;
 	     bd < c->btree_debug + ARRAY_SIZE(c->btree_debug);
 	     bd++) {
